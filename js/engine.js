@@ -36,7 +36,10 @@ function create(Wd, Rm) {
     if (!obj || obj.v !== 2) return false;
     const base = fresh(); G.st = Object.assign(base, obj); G.st.float = null; G.st.trans = null; G.st.touching = {}; G.st.block = {};
     if (G.st.mode === 'arcade') { G.st.mode = 'play'; G.st.arcade = null; }
-    resetEnemies(); return true;
+    resetEnemies();
+    // full4 minor 2: enemies restart at their start positions on load, so give the same visible entry safety as arriving in a room
+    if (G.st.mode === 'play') G.st.esafe = Math.max(G.st.esafe || 0, ENTRY_SAFE);
+    return true;
   };
   G.serialize = function () { const s = Object.assign({}, G.st); delete s.en; delete s.touching; delete s.trans; delete s.block; return JSON.parse(JSON.stringify(s)); };
   G.canSave = () => G.st && !G.st.float && G.st.mode !== 'title';

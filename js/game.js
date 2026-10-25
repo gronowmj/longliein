@@ -78,7 +78,8 @@ function layout() {
   const lowY = left.y + 240 * left.k, midL = left.x + 60 * left.k;
   L.hit = { left: { x: 0, y: lowY, w: midL, h: H - lowY }, right: { x: midL, y: lowY, w: play.x - midL, h: H - lowY },
     jump: { x: play.x + play.w, y: right.y + 248 * right.k, w: W - play.x - play.w, h: H - (right.y + 248 * right.k) },
-    pause: grow(L.vis.pause, 3), mute: grow(L.vis.mute, 3), p0: grow(L.vis.p0, 2), p1: grow(L.vis.p1, 2), play };
+    // full4 polish 2: pause/mute hit areas fill the gap between the pockets and JUMP, so they are at least 44 css px on small phones
+    pause: { x: right.x - 2, y: right.y + 179 * right.k, w: 60 * right.k + 2, h: 67 * right.k }, mute: { x: right.x + 60 * right.k, y: right.y + 179 * right.k, w: 60 * right.k + 2, h: 67 * right.k }, p0: { x: L.vis.p0.x - 2, y: L.vis.p0.y - 2, w: L.vis.p0.w + 4, h: 74 * right.k + 2 }, p1: { x: L.vis.p1.x - 2, y: right.y + 102 * right.k, w: L.vis.p1.w + 4, h: 76 * right.k }, play };
   // screen buttons inside the play area (CSS px)
   const P = play, u = P.w / 512, B = (x, y, w, h) => ({ x: P.x + x * u, y: P.y + y * u, w: w * u, h: h * u });
   L.btn = { cont: B(136, 222, 240, 50), fresh: B(136, 290, 240, 40), title: B(10, 30, 112, 34) };
@@ -141,17 +142,23 @@ function toggleMute() { muted = !muted; localStorage.setItem(MUTE_KEY, muted ? '
 // N4: every save carries a counter. A copy of the game (another tab / the home-screen app) never overwrites a newer save
 // written by a different copy: it adopts that save instead and waits on the pause card.
 let saveSeq = 0;
-const storedSeq = () => { const s = readSave(); return s ? (s.seq || 0) : 0; };
+// full4 minor 1: a win leaves a marker {v:2, won:true, seq} instead of deleting the save, so the counter never drops and an
+// older copy still holding the finished run can never write it back.
+const readRaw = () => { try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } };
+const storedSeq = () => { const s = readRaw(); return s ? (s.seq || 0) : 0; };
+function newerElsewhere() { const r = readRaw(); if (!r || r.won) { if (ui === 'game') { paused = null; toTitle(); } else refreshHasSave(); return; }
+  if (ui === 'game') adoptNewer(); else refreshHasSave(); }
 function adoptNewer() { const s = readSave(); if (!s || s.won) return false; if (!G.load(s)) return false; G.events.length = 0; saveSeq = s.seq || 0;
-  if (ui === 'game') { paused = paused || 'auto'; pointers.clear(); keys.clear(); jumpBuf = 0; introT = 0; } return true; }
+  if (ui === 'game') { paused = paused || 'auto'; pointers.clear(); keys.clear(); jumpBuf = 0; introT = 0; }
+  G.st.toast = { text: 'CONTINUED FROM|ANOTHER WINDOW', t: 2.2 }; return true; }
 function save(force) {
   if (!G.st || ui === 'win') return;
   if (!G.canSave() && !force) return;
-  try { const cur = storedSeq(); if (cur > saveSeq) { if (ui === 'game') adoptNewer(); else refreshHasSave(); return; }
+  try { const cur = storedSeq(); if (cur > saveSeq) { newerElsewhere(); return; }
     const s = G.serialize(); s.ui = ui === 'game' ? 'game' : 'title'; s.userPaused = paused === 'user'; s.seq = saveSeq = cur + 1; localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ }
 }
 window.addEventListener('storage', e => { if (e.key !== SAVE_KEY) return; const s = readSave();
-  if (ui === 'game' && s && !s.won && (s.seq || 0) > saveSeq) adoptNewer(); else if (ui === 'title') refreshHasSave(); });
+  const r = readRaw(); if (ui === 'game' && r && (r.seq || 0) > saveSeq) newerElsewhere(); else if (ui === 'title') refreshHasSave(); });
 function readSave() { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return s && s.v === 2 && s.n ? s : null; } catch (e) { return null; } }
 function refreshHasSave() { const s = readSave(); hasSave = !!(s && !s.won); }
 function loadSave() { const s = readSave(); if (!s || s.won) return false; const ok = G.load(s); G.events.length = 0; if (ok) saveSeq = s.seq || 0; return ok; }
@@ -165,7 +172,7 @@ function flushEvents() {
   for (const e of G.events) {
     if (e.sfx && SFX[e.sfx]) SFX[e.sfx]();
     if (e.room) { idleT = 0; save(); }
-    if (e.win) { ui = 'win'; uiT = 0; winAt = performance.now(); playMusic('win'); try { localStorage.removeItem(SAVE_KEY); } catch (er) { /* */ } }
+    if (e.win) { ui = 'win'; uiT = 0; winAt = performance.now(); playMusic('win'); try { const sq = storedSeq() + 1; localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 2, won: true, seq: sq })); saveSeq = sq; } catch (er) { /* */ } }
     if (e.gameover) { uiT = 0; save(true); }
     if (e.save && !e.win) save();
   }

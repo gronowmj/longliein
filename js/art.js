@@ -509,8 +509,11 @@ function drawScene(c, G, opts) {
   drawCuckoo(c, st, R, t);
   // Norris
   if (st.float) { const sway = Math.sin(t * 3) * 6; balloonArt(c, X(n.x) + 10, X(n.y) - 66, sway); }
+  // full4 polish 5: the blink dims Norris on its off-frames instead of hiding him, so he never vanishes from a still frame
   const flick = (st.inv > 0 && Math.floor(st.inv * 12) % 2 === 0) || (st.esafe > 0 && st.mode === 'play' && !st.trans && Math.floor(st.esafe * 10) % 2 === 1);
-  if (!flick && st.mode !== 'win') V.drawNorris(c, st.float ? 'jump2' : norrisPose(n, opts.idleT || 0, t, st.reach || 0), X(n.x), X(n.y) + 2, 0.6, n.face);
+  if (flick) c.globalAlpha = 0.3;
+  if (st.mode !== 'win') V.drawNorris(c, st.float ? 'jump2' : norrisPose(n, opts.idleT || 0, t, st.reach || 0), X(n.x), X(n.y) + 2, 0.6, n.face);
+  c.globalAlpha = 1;
   drawFrontDoors(c, R);
   if (st.trans) { const k = Math.min(1, st.trans.t / st.trans.dur); c.fillStyle = `rgba(0,0,0,${k})`; c.fillRect(0, 0, 512, 384); if (st.trans.kind === 'rocket') { const ry = 300 - k * 380; DEC.rocket(c, { x: n.x, y: ry / 2 }); for (let i = 0; i < 6; i++) disc(c, X(n.x) + Math.sin(i * 2 + t * 20) * 6, ry + 6 + i * 8, 6 - i * 0.8, i % 2 ? S.Y : S.R); } }
 }
@@ -533,10 +536,12 @@ function drawTitle(c, t, noText) {
   bedroomBackdrop(c); LOOK.bigbed(c, { x1: 120, x2: 214, y: 140 }); LOOK.bedside(c, { x1: 88, x2: 108, y: 148 });
   // Norris asleep: head on pillow, blanket over
   const hx = 268, hy = 262; V.drawNorrisHead(c, hx, hy, 0.75); shape(c, [[250, 280], [420, 266], [424, 292], [250, 296]], S.C, 1.2); for (let x = 270; x < 420; x += 24) ln(c, x, 276, x + 2, 294, 1.2, S.b);
-  for (let i = 0; i < 3; i++) { const k = ((t * 0.6 + i / 3) % 1); c.save(); c.globalAlpha = 1 - k; txt(c, 'Z', hx + 30 + k * 60, hy - 50 - k * 70, 12 + k * 14, S.W); c.restore(); }
+  for (let i = 0; i < 3; i++) { const k = ((t * 0.6 + i / 3) % 1); c.save(); c.globalAlpha = 1 - k; txt(c, 'Z', hx + 30 + k * 60, hy - 46 - k * 34, 12 + k * 12, S.W); c.restore(); }
   c.save(); c.translate(198, 290); V.drawObject(c, 'clock', 0, 0, 0.3); c.restore();
   rect(c, 0, 0, 512, 22, 'rgba(0,0,0,0)');
   if (noText) return;
+  // full4 polish 1: a dark panel behind the title so it reads cleanly over the picture and window (the Zs now stay below it)
+  c.save(); c.fillStyle = 'rgba(0,0,0,0.78)'; c.fillRect(92, 80, 328, 104); c.strokeStyle = S.M; c.lineWidth = 3; c.strokeRect(92, 80, 328, 104); c.restore();
   c.save(); c.shadowColor = '#000'; c.shadowOffsetY = 4; txt(c, 'THE LONG', 256, 112, 34, S.Y); txt(c, 'LIE-IN', 256, 156, 52, S.M); c.restore();
 }
 function drawWin(c, t) {
