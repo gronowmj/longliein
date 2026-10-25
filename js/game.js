@@ -6,7 +6,7 @@ const V = window.LLI_V3, HALL = window.LLI_V3_HALL, S = HALL.SPECTRUM, ART = win
 const FONT = '"Bungee", system-ui, sans-serif';
 const G = ENG.create(window.LLI_WORLD, window.LLI_ROOMS);
 const DT = ENG.consts.DT, SAVE_KEY = G.SAVE_KEY, MUTE_KEY = 'lli-muted';
-let ui = 'title', uiT = 0, idleT = 0, confirmNew = 0, paused = null, winAt = 0, introT = 0, lowT = 0, wasLow = false;
+let ui = 'title', uiT = 0, idleT = 0, confirmNew = 0, paused = null, winAt = 0, introT = 0, lowT = 0, wasLow = false, lowShown = false;
 const INTRO = 1.6, LOW = 0.1, GAMEOVER_GUARD = 1.5;
 let hasSave = false;
 
@@ -58,6 +58,7 @@ let L = null;
 const px = v => parseFloat(v) || 0;
 function grow(r, d) { return { x: r.x - d, y: r.y - d, w: r.w + 2 * d, h: r.h + 2 * d }; }
 function inR(r, x, y) { return r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h; }
+const SNAP_KEEP = 0.94;
 function layout() {
   const W = window.innerWidth, H = window.innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 3), cs = getComputedStyle(safeEl);
   const ins = { t: px(cs.paddingTop), r: px(cs.paddingRight), b: px(cs.paddingBottom), l: px(cs.paddingLeft) };
@@ -65,7 +66,8 @@ function layout() {
   const ux = ins.l, uy = ins.t, uw = W - ins.l - ins.r, uh = H - ins.t - ins.b, gap = 6, minPanel = 92;
   let ph = uh, pw = ph * 4 / 3; if (uw - pw - 2 * gap < 2 * minPanel) { pw = Math.max(160, uw - 2 * gap - 2 * minPanel); ph = pw * 3 / 4; }
   // p5: snap so each room unit (512x384 grid) is a whole number of device pixels where possible
-  { const kk = Math.floor(ph * dpr / 384); if (kk >= 1) { ph = kk * 384 / dpr; pw = ph * 4 / 3; } }
+  // N1: ...but only when that keeps at least SNAP_KEEP of the space; otherwise keep the smooth scale (correct size beats crispness)
+  { const kk = Math.floor(ph * dpr / 384), sh = kk * 384 / dpr; if (kk >= 1 && sh >= ph * SNAP_KEEP) { ph = sh; pw = ph * 4 / 3; } }
   const play = { x: Math.round(ux + (uw - pw) / 2), y: Math.round(uy + (uh - ph) / 2), w: pw, h: ph };
   const side = (uw - play.w) / 2 - gap, k = Math.min(side / 120, uh / 384);
   const left = { x: ux + (side - 120 * k) / 2, y: uy + (uh - 384 * k) / 2, k }, right = { x: play.x + play.w + gap + (side - 120 * k) / 2, y: left.y, k };
@@ -79,13 +81,13 @@ function layout() {
     pause: grow(L.vis.pause, 3), mute: grow(L.vis.mute, 3), p0: grow(L.vis.p0, 2), p1: grow(L.vis.p1, 2), play };
   // screen buttons inside the play area (CSS px)
   const P = play, u = P.w / 512, B = (x, y, w, h) => ({ x: P.x + x * u, y: P.y + y * u, w: w * u, h: h * u });
-  L.btn = { cont: B(136, 222, 240, 50), fresh: B(136, 290, 240, 40), title: B(196, 300, 120, 36) };
+  L.btn = { cont: B(136, 222, 240, 50), fresh: B(136, 290, 240, 40), title: B(10, 30, 112, 34) };
   ART.clearCache();
 }
 const portrait = () => L && L.H > L.W;
 
 /* ---------- input ---------- */
-const pointers = new Map(), keys = new Set(); let jumpBuf = 0;
+const pointers = new Map(), keys = new Set(); let jumpBuf = 0, kbSeen = false;
 function regionAt(x, y) { for (const k of ['jump', 'left', 'right', 'pause', 'mute', 'p0', 'p1']) if (inR(L.hit[k], x, y)) return k; return inR(L.hit.play, x, y) ? 'play' : null; }
 function press(region, x, y) {
   if (region === 'mute') { toggleMute(); return; }
@@ -106,9 +108,9 @@ function titleTap(x, y) {
   if (hasSave && inR(L.btn.cont, x, y)) { if (loadSave()) { startPlay(); } return; }
   if (hasSave && !inR(L.btn.fresh, x, y)) return;
   if (hasSave && confirmNew <= 0) { confirmNew = 3; SFX.click(); return; }
-  G.newGame(); G.events.length = 0; startPlay(); introT = INTRO; save();
+  G.newGame(); G.events.length = 0; startPlay(); introT = INTRO; saveSeq = storedSeq(); save();
 }
-function startPlay() { ui = 'game'; uiT = 0; paused = null; introT = 0; wasLow = false; confirmNew = 0; stopMusic(); idleT = 0; SFX.click(); }
+function startPlay() { ui = 'game'; uiT = 0; paused = null; introT = 0; wasLow = false; lowShown = false; confirmNew = 0; stopMusic(); idleT = 0; SFX.click(); }
 function toTitle() { ui = 'title'; uiT = 0; refreshHasSave(); playMusic('title'); }
 cv.addEventListener('pointerdown', e => { e.preventDefault(); unlockAudio(); try { cv.setPointerCapture(e.pointerId); } catch (err) { /* */ }
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (!portrait()) press(regionAt(e.clientX, e.clientY), e.clientX, e.clientY); });
@@ -121,6 +123,8 @@ for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick', 'co
 const KEYMAP = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Space: 'jump', ArrowUp: 'jump', KeyW: 'jump' };
 window.addEventListener('keydown', e => { unlockAudio(); const k = KEYMAP[e.code];
   const mid = L ? [L.btn.cont.x + L.btn.cont.w / 2, L.btn.cont.y + L.btn.cont.h / 2] : [0, 0];
+  kbSeen = true;
+  if (k && paused && ui === 'game' && k === 'jump') { e.preventDefault(); if (!e.repeat) resume(); return; } // P1: Space/Up resumes a pause (without jumping)
   if (k) { e.preventDefault(); if (!e.repeat) { keys.add(k); if (k === 'jump') press(ui === 'title' ? 'play' : 'jump', L.btn.cont.x + 2, L.btn.cont.y + 2); } return; }
   if (e.repeat) return;
   if (e.code === 'KeyP' || e.code === 'Escape') { if (ui === 'game') paused ? resume() : pause('user'); }
@@ -134,14 +138,23 @@ function held(name) { if (keys.has(name)) return true; for (const p of pointers.
 function pause(why) { if (paused || ui !== 'game') return; paused = why; pointers.clear(); keys.clear(); jumpBuf = 0; if (why === 'user') SFX.click(); save(); }
 function resume() { paused = null; SFX.click(); save(); }
 function toggleMute() { muted = !muted; localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); if (!muted) { unlockAudio(); SFX.click(); } }
+// N4: every save carries a counter. A copy of the game (another tab / the home-screen app) never overwrites a newer save
+// written by a different copy: it adopts that save instead and waits on the pause card.
+let saveSeq = 0;
+const storedSeq = () => { const s = readSave(); return s ? (s.seq || 0) : 0; };
+function adoptNewer() { const s = readSave(); if (!s || s.won) return false; if (!G.load(s)) return false; G.events.length = 0; saveSeq = s.seq || 0;
+  if (ui === 'game') { paused = paused || 'auto'; pointers.clear(); keys.clear(); jumpBuf = 0; introT = 0; } return true; }
 function save(force) {
   if (!G.st || ui === 'win') return;
   if (!G.canSave() && !force) return;
-  try { const s = G.serialize(); s.ui = ui === 'game' ? 'game' : 'title'; s.userPaused = paused === 'user'; localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ }
+  try { const cur = storedSeq(); if (cur > saveSeq) { if (ui === 'game') adoptNewer(); else refreshHasSave(); return; }
+    const s = G.serialize(); s.ui = ui === 'game' ? 'game' : 'title'; s.userPaused = paused === 'user'; s.seq = saveSeq = cur + 1; localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ }
 }
+window.addEventListener('storage', e => { if (e.key !== SAVE_KEY) return; const s = readSave();
+  if (ui === 'game' && s && !s.won && (s.seq || 0) > saveSeq) adoptNewer(); else if (ui === 'title') refreshHasSave(); });
 function readSave() { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return s && s.v === 2 && s.n ? s : null; } catch (e) { return null; } }
 function refreshHasSave() { const s = readSave(); hasSave = !!(s && !s.won); }
-function loadSave() { const s = readSave(); if (!s || s.won) return false; const ok = G.load(s); G.events.length = 0; return ok; }
+function loadSave() { const s = readSave(); if (!s || s.won) return false; const ok = G.load(s); G.events.length = 0; if (ok) saveSeq = s.seq || 0; return ok; }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { keys.clear(); pointers.clear(); jumpBuf = 0; if (ui === 'game' && !paused) pause('auto'); else save(); } else { last = 0; acc = 0; } });
 window.addEventListener('pagehide', () => save());
 window.addEventListener('beforeunload', () => save());
@@ -177,8 +190,8 @@ function step() {
 function lowWarn() {
   const st = G.st; const low = st.mode === 'play' && st.energy < LOW && !st.float;
   if (low) { lowT -= DT; if (lowT <= 0) { lowT = 1.5; SFX.low(); }
-    if (!wasLow && !st.toast) st.toast = { text: 'CANDLE LOW!|FIND SOMETHING TO EAT', t: 2.6, kind: 'warn' }; }
-  else lowT = 0;
+    if (!lowShown && !st.toast) { st.toast = { text: 'CANDLE LOW!|FIND SOMETHING TO EAT', t: 2.6, kind: 'warn' }; lowShown = true; } }
+  else { lowT = 0; lowShown = false; }
   wasLow = low;
 }
 
@@ -253,7 +266,7 @@ function render() {
       const y0 = T.kind === 'hit' ? 70 : 150; lines.forEach((ln, i) => boxText(ln, P.w / 2, (y0 + i * 32) * u, i ? 13 : 20, i ? S.C : S.Y, u, S.Y)); ctx.globalAlpha = 1; }
     if (st.mode === 'gameover') { ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, P.w, P.h); label('GAME OVER', P.w / 2, P.h * 0.38, Math.round(46 * u), S.R);
       label('YOUR PROGRESS IS KEPT', P.w / 2, P.h * 0.52, Math.round(15 * u), S.W); if (uiT > GAMEOVER_GUARD) { ctx.restore(); bigButton(L.btn.cont, 'CONTINUE', S.G); ctx.save(); ctx.translate(P.x, P.y); } }
-    if (paused) { ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, 0, P.w, P.h); label('PAUSED', P.w / 2, P.h * 0.36, Math.round(48 * u), S.M); label('TAP TO PLAY', P.w / 2, P.h * 0.54, Math.round(22 * u), S.C);
+    if (paused) { ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, 0, P.w, P.h); label('PAUSED', P.w / 2, P.h * 0.36, Math.round(48 * u), S.M); label('TAP TO PLAY', P.w / 2, P.h * 0.54, Math.round(22 * u), S.C); if (kbSeen) label('OR PRESS SPACE / ENTER', P.w / 2, P.h * 0.63, Math.round(13 * u), S.W);
       ctx.restore(); bigButton(L.btn.title, 'TITLE', S.Y); ctx.save(); ctx.translate(P.x, P.y); }
   }
   if (ui === 'title') {
@@ -302,7 +315,7 @@ Promise.race([fontReady, new Promise(r => setTimeout(r, 1500))]).then(start, sta
 window.LLI_TEST = {
   G, get state() { return G.st ? JSON.parse(JSON.stringify(G.serialize())) : null; }, get live() { return G.st; }, get layout() { return L; },
   get ui() { return ui; }, get paused() { return paused; }, get intro() { return introT; }, get music() { return music && music.name; },
-  newGame() { G.newGame(); G.events.length = 0; startPlay(); save(); }, save() { save(); }, flush: flushEvents,
+  newGame() { G.newGame(); G.events.length = 0; startPlay(); saveSeq = storedSeq(); save(); }, save() { save(); }, flush: flushEvents, resume() { if (paused) resume(); },
   place(x, y) { Object.assign(G.st.n, { x, y, ground: true, vx: 0, vy: 0 }); G.st.arm = null; },
   give(id) { const k = G.st.pockets.indexOf(null); if (k < 0) return false; G.st.pockets[k] = id; G.st.items[id] = { held: true }; return true; },
   room(id, x, y) { G.enterRoom(id, false, [x, y]); G.events.length = 0; }

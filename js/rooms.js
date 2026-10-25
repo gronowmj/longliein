@@ -21,7 +21,7 @@ R.f_land = { name: 'LANDING', pal: 'land', respawn: [112, 176],
   edges: { left: [{ to: 'f_spar', y: 176 }], right: [{ to: 'f_mast', y: 176 }] },
   spots: [door('d_libr', 128, 'back', 'f_libr'), { id: 'loft', x1: 170, x2: 186, y: 176, kind: 'up', to: 'a_atti', req: { flags: ['hatch_down'] }, arrow: 'up', look: 'loftladder' }],
   things: [{ id: 'hatchhook', x1: 166, x2: 190, y1: 100, y2: 176, acts: ['hatch'], draw: 'lofthatch', msg: 'A LOFT HATCH, HIGH OUT OF REACH.', msgIf: [{ when: { flags: ['hatch_down'] }, msg: '' }] }],
-  items: {}, enemies: [{ type: 'patrol', art: 'wool', x1: 108, x2: 206, y: 176, speed: 18, pause: 1, w: 12, h: 12, start: 'far' }],
+  items: {}, enemies: [{ type: 'patrol', art: 'wool', x1: 108, x2: 206, y: 176, speed: 18, pause: 1, w: 12, h: 12, start: 'away' }],
   decor: [{ k: 'stairwell', x1: 64, x2: 100 }, { k: 'window', x: 214, y: 50, w: 36, h: 50 }, { k: 'picture', x: 24, y: 70, w: 26, h: 22, col: 'C' }],
   msgs: { hatch: 'HOOKED IT! THE LOFT LADDER SLIDES DOWN.' } };
 
@@ -56,7 +56,7 @@ R.g_kitc = { name: 'KITCHEN', pal: 'kitc', respawn: [20, 176],
     door('d_cons', 196, 'back', 'g_cons')],
   things: [{ id: 'traplock', x1: 118, x2: 138, y1: 160, y2: 176, acts: ['unlock_cellar'] }],
   items: { teacosy: [82, 138] }, food: [160, 92],
-  enemies: [{ type: 'patrol', art: 'toast', x1: 20, x2: 180, y: 176, speed: 24, w: 10, h: 20, start: 'far' }],
+  enemies: [{ type: 'patrol', art: 'toast', x1: 20, x2: 180, y: 176, speed: 24, w: 10, h: 20, start: 'away' }],
   decor: [{ k: 'window', x: 60, y: 30, w: 44, h: 46 }, { k: 'pans', x: 150, y: 40 }],
   msgs: { unlock_cellar: 'CLUNK! THE CELLAR TRAPDOOR IS UNLOCKED.' } };
 
@@ -181,7 +181,7 @@ R.a_toys = { name: 'TOY LOFT', pal: 'toys', respawn: [20, 176],
     { id: 'ladF', x1: 232, x2: 246, y: 176, kind: 'ladder', local: true, dest: [239, 42], req: { flags: ['ladder_down'] }, arrow: 'up', look: 'none' },
     door('d_tank', 72, 'back', 'a_tank')],
   things: [], items: { drawerkey: [214, 42] },
-  enemies: [{ type: 'patrol', art: 'mouse', x1: 96, x2: 228, y: 176, speed: 30, w: 14, h: 9, start: 'far' }],
+  enemies: [{ type: 'patrol', art: 'mouse', x1: 96, x2: 228, y: 176, speed: 30, w: 14, h: 9, start: 'away' }],
   decor: [{ k: 'roofbeams' }, { k: 'balloon' }, { k: 'ropeladder' }],
   msgs: { ladder_unrolls: 'THE ROPE LADDER UNROLLS TO THE FLOOR.' } };
 
@@ -207,7 +207,7 @@ R.r_chtp = { name: 'CHIMNEY TOP', pal: 'roof', outside: true, respawn: [110, 164
   plats: [F(0, 256, 164, 'ridge'), P(70, 100, 128, 'bigpot'), P(130, 150, 140, 'pot')],
   edges: { right: [{ to: 'r_roof', y: 164 }] },
   spots: [{ id: 'pot', x1: 76, x2: 94, y: 128, kind: 'down', to: 'a_chim', arrow: 'down', look: 'none' }],
-  things: [], items: {}, enemies: [{ type: 'swoop', art: 'pigeon', y: 50, dip: 76, period: 4.5, w: 16, h: 10 }],
+  things: [], items: {}, enemies: [{ type: 'swoop', art: 'pigeon', y: 50, dip: 76, period: 4.5, w: 16, h: 10, delay: 0.8 }],
   decor: [{ k: 'nightsky' }, { k: 'stack', x1: 60, x2: 160 }] };
 
 R.r_roof = { name: 'ROOFTOP', pal: 'roof', outside: true, respawn: [20, 164],

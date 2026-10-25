@@ -102,7 +102,12 @@ function create(Wd, Rm) {
 
   /* ---------- rooms ---------- */
   function resetEnemies() {
-    const R = G.room(); G.st.en = (R.enemies || []).map((e, k) => ({ k, x: e.x != null ? e.x : (e.start === 'far' ? e.x2 : (e.x1 != null ? e.x1 : 128)), y: e.y || 100, dir: e.start === 'far' ? -1 : 1, pause: e.start === 'far' ? (e.pause || 0) : 0, t: -(e.delay || 0), ph: 0, a: 0 }));
+    // start:'far' = begin at x2 heading left; start:'away' = begin at whichever end is further from Norris, pausing first
+    const R = G.room(), nx = G.st.n ? G.st.n.x : 128;
+    G.st.en = (R.enemies || []).map((e, k) => { let x = e.x != null ? e.x : (e.x1 != null ? e.x1 : 128), dir = 1, pause = 0;
+      if (e.start === 'far') { x = e.x2; dir = -1; pause = e.pause || 0; }
+      else if (e.start === 'away') { const atX1 = Math.abs(nx - e.x1) > Math.abs(nx - e.x2); x = atX1 ? e.x1 : e.x2; dir = atX1 ? 1 : -1; pause = Math.max(e.pause || 0, 0.6); }
+      return { k, x, y: e.y || 100, dir, pause, t: -(e.delay != null ? e.delay : (e.type === 'dart' ? 1.0 : 0)), ph: 0, a: 0 }; });
   }
   function arrivalFor(dest, src, via) {
     const D = Rm[dest];
@@ -162,7 +167,7 @@ function create(Wd, Rm) {
     if (st.lives <= 0) { st.lives = 0; st.mode = 'gameover'; st.deathAt = { room: st.room, at }; ev({ gameover: true }); return; }
     respawn(at); say('OOPS! ' + st.lives + (st.lives === 1 ? ' LIFE LEFT' : ' LIVES LEFT'), 2);
   }
-  function respawn(at) { const st = G.st; st.n = mkN(at[0], at[1], st.n.face); st.energy = 1; st.inv = Wd.rules.safe_time; st.arm = null; resetEnemies(); }
+  function respawn(at) { const st = G.st; st.n = mkN(at[0], at[1], st.n.face); st.energy = 1; st.inv = Wd.rules.safe_time; st.arm = null; resetEnemies(); noArmHere(); }
   G.continueGame = function () {
     const st = G.st; if (st.mode !== 'gameover') return;
     st.mode = 'play'; st.lives = Wd.rules.lives_start; const d = st.deathAt || { room: st.room, at: G.room().respawn };

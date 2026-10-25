@@ -509,7 +509,7 @@ function drawScene(c, G, opts) {
   drawCuckoo(c, st, R, t);
   // Norris
   if (st.float) { const sway = Math.sin(t * 3) * 6; balloonArt(c, X(n.x) + 10, X(n.y) - 66, sway); }
-  const flick = st.inv > 0 && Math.floor(st.inv * 12) % 2 === 0;
+  const flick = (st.inv > 0 && Math.floor(st.inv * 12) % 2 === 0) || (st.esafe > 0 && st.mode === 'play' && !st.trans && Math.floor(st.esafe * 10) % 2 === 1);
   if (!flick && st.mode !== 'win') V.drawNorris(c, st.float ? 'jump2' : norrisPose(n, opts.idleT || 0, t, st.reach || 0), X(n.x), X(n.y) + 2, 0.6, n.face);
   drawFrontDoors(c, R);
   if (st.trans) { const k = Math.min(1, st.trans.t / st.trans.dur); c.fillStyle = `rgba(0,0,0,${k})`; c.fillRect(0, 0, 512, 384); if (st.trans.kind === 'rocket') { const ry = 300 - k * 380; DEC.rocket(c, { x: n.x, y: ry / 2 }); for (let i = 0; i < 6; i++) disc(c, X(n.x) + Math.sin(i * 2 + t * 20) * 6, ry + 6 + i * 8, 6 - i * 0.8, i % 2 ? S.Y : S.R); } }
