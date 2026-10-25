@@ -214,7 +214,7 @@ R.r_roof = { name: 'ROOFTOP', pal: 'roof', outside: true, respawn: [20, 164],
   plats: [F(0, 256, 164, 'ridge'), P(196, 244, 156, 'pad')],
   edges: { left: [{ to: 'r_chtp', y: 164 }] },
   spots: [{ id: 'rocket', x1: 204, x2: 236, y: 156, kind: 'rocket', to: 'n_harb', act: 'rocket', arrow: 'up', look: 'none', lockMsg: 'THE ROCKET\'S TANK IS EMPTY.' }],
-  things: [], placeAt: { can: [212, 156] }, items: {},
+  things: [], items: {},
   enemies: [{ type: 'vane', x: 96, y: 164, shelter: 190 }],
   decor: [{ k: 'nightsky' }, { k: 'windbreak', x1: 176, x2: 190 }, { k: 'rocket', x: 220, y: 156 }] };
 

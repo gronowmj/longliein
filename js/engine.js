@@ -34,12 +34,12 @@ function create(Wd, Rm) {
   G.newGame = function () { G.st = fresh(); enterRoom(G.st.room, false); G.st.steps = 0; return G.st; };
   G.load = function (obj) {
     if (!obj || obj.v !== 2) return false;
-    const base = fresh(); G.st = Object.assign(base, obj); G.st.float = null; G.st.trans = null; G.st.touching = {}; G.st.block = {};
+    const base = fresh(); G.st = Object.assign(base, obj); G.st.float = null; G.st.trans = null; G.st.touching = {}; G.st.block = {}; delete G.st.dropped;
     if (G.st.mode === 'arcade') { G.st.mode = 'play'; G.st.arcade = null; }
     resetEnemies();
     // full4 minor 2: enemies restart at their start positions on load, so give the same visible entry safety as arriving in a room
     if (G.st.mode === 'play') G.st.esafe = Math.max(G.st.esafe || 0, ENTRY_SAFE);
-    if (!G.st.pord) G.st.pord = G.st.pockets.map(() => 0);   // full5: older saves have no pocket order (a tie counts slot 1 as the oldest)
+    if (!G.st.pord) G.st.pord = G.st.pockets.map(() => 0);   // full5: older saves have no pocket order (a tie counts slot 0 as the oldest)
     blockUnder();
     return true;
   };
@@ -127,7 +127,7 @@ function create(Wd, Rm) {
     return D.respawn;
   }
   function enterRoom(id, counted = true, pos, face) {
-    const st = G.st; const prev = st.room; st.room = id; st.rt = 0; st.chairPrev = null; st.arm = null; st.visitPopped = false; st.touching = {}; st.block = {}; st.dropped = {};
+    const st = G.st; const prev = st.room; st.room = id; st.rt = 0; st.chairPrev = null; st.arm = null; st.visitPopped = false; st.touching = {}; st.block = {};
     st.cuckoo.pop = null;
     const R = Rm[id];
     const p = pos || R.start || R.respawn;
@@ -191,12 +191,15 @@ function create(Wd, Rm) {
   function swapSlot(keep) { const st = G.st, ord = st.pord || []; let best = -1;
     st.pockets.forEach((p, k) => { if (p && !keep.includes(p) && (best < 0 || (ord[k] || 0) < (ord[best] || 0))) best = k; }); return best; }
   G.swapSlot = swapSlot;
+  // full6 (original rules): there is no drop. Only touching an item ON FOOT (standing, walking or landing) picks it up, so a
+  // jump that passes over an item never does. A blocked item (left by a swap, or under Norris when he arrives) can be picked
+  // up again once he has walked away from it, i.e. he is standing somewhere not touching it (jumping on the spot keeps it blocked).
   function tryPickups() {
     const st = G.st, n = st.n;
     for (const id in st.items) {
-      const it = st.items[id]; if (it.room !== st.room || it.held || (st.dropped && st.dropped[id])) continue;
-      if (!touchesItem(it, n)) { if (st.block[id]) delete st.block[id]; continue; }
-      if (st.block[id]) continue;
+      const it = st.items[id]; if (it.room !== st.room || it.held) continue;
+      if (!touchesItem(it, n)) { if (st.block[id] && n.ground) delete st.block[id]; continue; }
+      if (st.block[id] || !n.ground) continue;
       const I = ITEMS[id];
       // full5: a guard (snapdragons, falling books, the vault lock) only protects an item until it has first been picked up
       const guard = I.pickup_requires && !(st.got && st.got[id]) && !st.found[id] ? I.pickup_requires : null;
@@ -207,7 +210,7 @@ function create(Wd, Rm) {
         slot = Rm[st.room].noDrop ? -1 : swapSlot((guard && guard.carry) || []);
         if (slot < 0) { st.block[id] = 1; say('POCKETS FULL', 1.6); sfx('nope'); continue; }
         out = st.pockets[slot]; st.pockets[slot] = null;
-        st.items[out] = { room: st.room, x: it.x, y: it.y }; st.block[out] = 1; (st.dropped || (st.dropped = {}))[out] = 1;
+        st.items[out] = { room: st.room, x: it.x, y: it.y }; st.block[out] = 1;
       }
       if (it.y < n.y - 14) st.reach = 0.35; giveTo(id, slot); (I.pickup_sets || []).forEach(f => st.flags[f] = true);
       say(I.name.toUpperCase() + '|' + G.itemHint(id) + (out ? '|LEFT THE ' + ITEMS[out].name.toUpperCase() + ' HERE' : ''), 3.4, 'item'); sfx('pickup');
@@ -222,16 +225,7 @@ function create(Wd, Rm) {
       }
     }
   }
-  G.drop = function (slot) {
-    const st = G.st; if (st.mode !== 'play' || st.float || st.trans) return false;
-    const id = st.pockets[slot]; if (!id) return false;
-    if (!st.n.ground) { say('LAND FIRST', 1); sfx('nope'); return false; }
-    const R = G.room(); if (R.noDrop) { say("CAN'T DROP THAT HERE", 1.2); return false; }
-    const p = platAt(st.n.x, st.n.y); let y = st.n.y;
-    if (p && p.mover) { const below = platforms().filter(q => !q.mover && st.n.x >= q.x1 && st.n.x <= q.x2 && q.y > p.y).sort((a, b) => a.y - b.y)[0]; y = below ? below.y : 176; }
-    st.pockets[slot] = null; st.items[id] = { room: st.room, x: st.n.x, y }; st.block[id] = 1; (st.dropped || (st.dropped = {}))[id] = 1; sfx('drop'); ev({ save: true });
-    return true;
-  };
+  // full6: no drop action (original rules); pockets are display only
 
   /* ---------- actions ---------- */
   function doAction(a, slotHint) {

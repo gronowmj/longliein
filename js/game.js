@@ -101,7 +101,6 @@ function press(region, x, y) {
   if (introT > 0) { if (region === 'play' || region === 'jump') introT = Math.min(introT, 0.01); return; }
   if (region === 'jump' || (region === 'play' && st.mode === 'arcade')) jumpBuf = 0.15;
   else if (region === 'pause') pause('user');
-  else if (region === 'p0' || region === 'p1') { if (G.drop(region === 'p0' ? 0 : 1)) idleT = 0; flushEvents(); }
 }
 function titleTap(x, y) {
   unlockAudio();
@@ -129,7 +128,7 @@ window.addEventListener('keydown', e => { unlockAudio(); const k = KEYMAP[e.code
   if (k) { e.preventDefault(); if (!e.repeat) { keys.add(k); if (k === 'jump') press(ui === 'title' ? 'play' : 'jump', L.btn.cont.x + 2, L.btn.cont.y + 2); } return; }
   if (e.repeat) return;
   if (e.code === 'KeyP' || e.code === 'Escape') { if (ui === 'game') paused ? resume() : pause('user'); }
-  else if (e.code === 'KeyM') toggleMute(); else if (e.code === 'Digit1') press('p0'); else if (e.code === 'Digit2') press('p1');
+  else if (e.code === 'KeyM') toggleMute();
   else if (e.code === 'Enter') press('play', mid[0], mid[1]); });
 window.addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys.delete(k); });
 window.addEventListener('blur', () => { keys.clear(); pointers.clear(); });
