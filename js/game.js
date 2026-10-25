@@ -6,7 +6,8 @@ const V = window.LLI_V3, HALL = window.LLI_V3_HALL, S = HALL.SPECTRUM, ART = win
 const FONT = '"Bungee", system-ui, sans-serif';
 const G = ENG.create(window.LLI_WORLD, window.LLI_ROOMS);
 const DT = ENG.consts.DT, SAVE_KEY = G.SAVE_KEY, MUTE_KEY = 'lli-muted';
-let ui = 'title', uiT = 0, idleT = 0, confirmNew = 0, paused = null, winAt = 0;
+let ui = 'title', uiT = 0, idleT = 0, confirmNew = 0, paused = null, winAt = 0, introT = 0, lowT = 0, wasLow = false;
+const INTRO = 1.6, LOW = 0.1, GAMEOVER_GUARD = 1.5;
 let hasSave = false;
 
 /* ---------- audio ---------- */
@@ -31,7 +32,7 @@ const SFX = {
   eat() { for (let i = 0; i < 3; i++) tone('square', 300 + i * 120, 300 + i * 120, 0.05, 0.07, i * 0.07); }, magic() { for (let i = 0; i < 6; i++) tone('square', 523 * Math.pow(1.122, i), 523 * Math.pow(1.122, i), 0.06, 0.06, i * 0.05); },
   win() { SFX.magic(); }, nope() { tone('square', 160, 120, 0.15, 0.08); }, arm() { tone('sine', 880, 1320, 0.12, 0.06); }, use() { tone('triangle', 330, 990, 0.18, 0.12); },
   cuckoo() { tone('sine', 784, 784, 0.16, 0.12); tone('sine', 622, 622, 0.22, 0.12, 0.2); }, boing() { tone('triangle', 200, 600, 0.2, 0.15); }, snip() { noise(0.05, 0.2); tone('square', 1200, 1800, 0.05, 0.05); },
-  click() { tone('square', 520, 520, 0.03, 0.04); }
+  click() { tone('square', 520, 520, 0.03, 0.04); }, low() { tone('square', 880, 880, 0.06, 0.06); tone('square', 660, 660, 0.08, 0.06, 0.1); }
 };
 // beeper tunes (original): [midi note or 0 for rest, length in eighths]
 const TUNES = {
@@ -63,7 +64,9 @@ function layout() {
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   const ux = ins.l, uy = ins.t, uw = W - ins.l - ins.r, uh = H - ins.t - ins.b, gap = 6, minPanel = 92;
   let ph = uh, pw = ph * 4 / 3; if (uw - pw - 2 * gap < 2 * minPanel) { pw = Math.max(160, uw - 2 * gap - 2 * minPanel); ph = pw * 3 / 4; }
-  const play = { x: Math.round(ux + (uw - pw) / 2), y: Math.round(uy + (uh - ph) / 2), w: Math.round(pw), h: Math.round(pw * 0.75) };
+  // p5: snap so each room unit (512x384 grid) is a whole number of device pixels where possible
+  { const kk = Math.floor(ph * dpr / 384); if (kk >= 1) { ph = kk * 384 / dpr; pw = ph * 4 / 3; } }
+  const play = { x: Math.round(ux + (uw - pw) / 2), y: Math.round(uy + (uh - ph) / 2), w: pw, h: ph };
   const side = (uw - play.w) / 2 - gap, k = Math.min(side / 120, uh / 384);
   const left = { x: ux + (side - 120 * k) / 2, y: uy + (uh - 384 * k) / 2, k }, right = { x: play.x + play.w + gap + (side - 120 * k) / 2, y: left.y, k };
   L = { W, H, dpr, ins, play, left, right, side, gap };
@@ -89,9 +92,10 @@ function press(region, x, y) {
   if (ui === 'title') { titleTap(x, y); return; }
   if (ui === 'win') { if (uiT > 3) { ui = 'title'; uiT = 0; refreshHasSave(); SFX.click(); } return; }
   const st = G.st;
-  if (paused) { if (paused === 'user' && inR(L.btn.title, x, y)) { paused = null; save(); toTitle(); return; }
+  if (paused) { if (inR(L.btn.title, x, y)) { paused = null; save(); toTitle(); return; }
     if (region === 'play' || region === 'pause') resume(); return; }
-  if (st.mode === 'gameover') { if (uiT > 1.0) { G.continueGame(); flushEvents(); save(); SFX.click(); } return; }
+  if (st.mode === 'gameover') { if (region === 'play' && uiT > GAMEOVER_GUARD && inR(grow(L.btn.cont, 6), x, y)) { G.continueGame(); flushEvents(); save(); SFX.click(); } return; }
+  if (introT > 0) { if (region === 'play' || region === 'jump') introT = Math.min(introT, 0.01); return; }
   if (region === 'jump' || (region === 'play' && st.mode === 'arcade')) jumpBuf = 0.15;
   else if (region === 'pause') pause('user');
   else if (region === 'p0' || region === 'p1') { if (G.drop(region === 'p0' ? 0 : 1)) idleT = 0; flushEvents(); }
@@ -102,9 +106,9 @@ function titleTap(x, y) {
   if (hasSave && inR(L.btn.cont, x, y)) { if (loadSave()) { startPlay(); } return; }
   if (hasSave && !inR(L.btn.fresh, x, y)) return;
   if (hasSave && confirmNew <= 0) { confirmNew = 3; SFX.click(); return; }
-  G.newGame(); G.events.length = 0; startPlay(); save();
+  G.newGame(); G.events.length = 0; startPlay(); introT = INTRO; save();
 }
-function startPlay() { ui = 'game'; uiT = 0; paused = null; confirmNew = 0; stopMusic(); idleT = 0; SFX.click(); }
+function startPlay() { ui = 'game'; uiT = 0; paused = null; introT = 0; wasLow = false; confirmNew = 0; stopMusic(); idleT = 0; SFX.click(); }
 function toTitle() { ui = 'title'; uiT = 0; refreshHasSave(); playMusic('title'); }
 cv.addEventListener('pointerdown', e => { e.preventDefault(); unlockAudio(); try { cv.setPointerCapture(e.pointerId); } catch (err) { /* */ }
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (!portrait()) press(regionAt(e.clientX, e.clientY), e.clientX, e.clientY); });
@@ -116,7 +120,7 @@ for (const ev of ['touchstart', 'touchmove', 'touchend']) document.addEventListe
 for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick', 'contextmenu', 'selectstart']) document.addEventListener(ev, stop, { passive: false });
 const KEYMAP = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Space: 'jump', ArrowUp: 'jump', KeyW: 'jump' };
 window.addEventListener('keydown', e => { unlockAudio(); const k = KEYMAP[e.code];
-  const mid = L ? [L.play.x + L.play.w / 2, L.play.y + L.play.h * 0.55] : [0, 0];
+  const mid = L ? [L.btn.cont.x + L.btn.cont.w / 2, L.btn.cont.y + L.btn.cont.h / 2] : [0, 0];
   if (k) { e.preventDefault(); if (!e.repeat) { keys.add(k); if (k === 'jump') press(ui === 'title' ? 'play' : 'jump', L.btn.cont.x + 2, L.btn.cont.y + 2); } return; }
   if (e.repeat) return;
   if (e.code === 'KeyP' || e.code === 'Escape') { if (ui === 'game') paused ? resume() : pause('user'); }
@@ -127,7 +131,7 @@ window.addEventListener('blur', () => { keys.clear(); pointers.clear(); });
 function held(name) { if (keys.has(name)) return true; for (const p of pointers.values()) if (inR(L.hit[name], p.x, p.y)) return true; return false; }
 
 /* ---------- pause / save / resume ---------- */
-function pause(why) { if (paused || ui !== 'game') return; paused = why; pointers.clear(); keys.clear(); jumpBuf = 0; SFX.click(); save(); }
+function pause(why) { if (paused || ui !== 'game') return; paused = why; pointers.clear(); keys.clear(); jumpBuf = 0; if (why === 'user') SFX.click(); save(); }
 function resume() { paused = null; SFX.click(); save(); }
 function toggleMute() { muted = !muted; localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); if (!muted) { unlockAudio(); SFX.click(); } }
 function save(force) {
@@ -138,7 +142,7 @@ function save(force) {
 function readSave() { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return s && s.v === 2 && s.n ? s : null; } catch (e) { return null; } }
 function refreshHasSave() { const s = readSave(); hasSave = !!(s && !s.won); }
 function loadSave() { const s = readSave(); if (!s || s.won) return false; const ok = G.load(s); G.events.length = 0; return ok; }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { keys.clear(); pointers.clear(); jumpBuf = 0; save(); } else { last = 0; acc = 0; } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { keys.clear(); pointers.clear(); jumpBuf = 0; if (ui === 'game' && !paused) pause('auto'); else save(); } else { last = 0; acc = 0; } });
 window.addEventListener('pagehide', () => save());
 window.addEventListener('beforeunload', () => save());
 
@@ -166,6 +170,16 @@ function step() {
   jumpBuf = Math.max(0, jumpBuf - DT);
   if (st.mode === 'play' && st.n.ground && !dir) idleT += DT; else idleT = 0;
   flushEvents();
+  lowWarn();
+}
+
+// m6: candle warning below 10%: a beep every 1.5 s, a one-off toast, and the candle blinks in the panel
+function lowWarn() {
+  const st = G.st; const low = st.mode === 'play' && st.energy < LOW && !st.float;
+  if (low) { lowT -= DT; if (lowT <= 0) { lowT = 1.5; SFX.low(); }
+    if (!wasLow && !st.toast) st.toast = { text: 'CANDLE LOW!|FIND SOMETHING TO EAT', t: 2.6, kind: 'warn' }; }
+  else lowT = 0;
+  wasLow = low;
 }
 
 /* ---------- drawing ---------- */
@@ -188,6 +202,8 @@ function panels() {
   const st = G.st, A = L.left, k = A.k, Lx = v => A.x + v * k, Ly = v => A.y + v * k, game = (ui === 'game' || ui === 'win') && st;
   frame(Lx(0), Ly(0), 120 * k, 240 * k, S.b, 2); frame(Lx(4), Ly(4), 112 * k, 232 * k, S.b, 1);
   label('ENERGY', Lx(60), Ly(18), Math.round(14 * k), S.M);
+  const lowNow = game && ui === 'game' && st.energy < LOW && st.mode === 'play';
+  if (lowNow && Math.floor(performance.now() / 250) % 2 === 0) { ctx.fillStyle = 'rgba(255,40,40,0.35)'; ctx.fillRect(Lx(10), Ly(30), 100 * k, 104 * k); frame(Lx(10), Ly(30), 100 * k, 104 * k, S.R, 2); }
   V.drawCandle(ctx, Lx(60), Ly(126), 0.42 * k, game ? st.energy : 1, performance.now() / 1000 * 7);
   label('LIVES', Lx(60), Ly(144), Math.round(14 * k), S.C);
   const lives = game ? st.lives : 3, gap = lives > 3 ? 24 : 30;
@@ -220,6 +236,12 @@ function render() {
   if (ui === 'title') ART.drawTitle(ctx, now);
   else if (ui === 'win') ART.drawWin(ctx, now);
   else if (st.mode === 'arcade') ART.drawArcade(ctx, G);
+  else if (introT > 0.5) ART.drawTitle(ctx, now, true);
+  else if (introT > 0) { // short hop out of bed onto the floor
+    const n = st.n, keep = Object.assign({}, n), k = 1 - introT / 0.5;
+    Object.assign(n, { x: 134 + (keep.x - 134) * k, y: 140 + (keep.y - 140) * k - Math.sin(k * Math.PI) * 18, ground: false, vy: k < 0.5 ? -1 : 1, air: 1, face: -1 });
+    ART.drawScene(ctx, G, { pw: Math.round(P.w * dpr), idleT }); Object.assign(n, keep);
+  }
   else ART.drawScene(ctx, G, { pw: Math.round(P.w * dpr), idleT });
   ctx.restore();
   ctx.save(); ctx.translate(P.x, P.y);
@@ -227,12 +249,12 @@ function render() {
     const R = G.room(); ctx.globalAlpha = 0.85; label(R.name, P.w / 2, 11 * u + 3, Math.round(15 * u), S.W); ctx.globalAlpha = 1;
     if (st.inv > 1.2) { ctx.globalAlpha = (st.inv - 1.2) / 0.3 * 0.35; ctx.fillStyle = S.R; ctx.fillRect(0, 0, P.w, P.h); ctx.globalAlpha = 1; }
     const T = st.toast;
-    if (T && !paused && st.mode === 'play') { ctx.globalAlpha = Math.min(1, T.t * 3); const lines = T.text.split('|');
+    if (T && !paused && st.mode === 'play' && introT <= 0) { ctx.globalAlpha = Math.min(1, T.t * 3); const lines = T.text.split('|');
       const y0 = T.kind === 'hit' ? 70 : 150; lines.forEach((ln, i) => boxText(ln, P.w / 2, (y0 + i * 32) * u, i ? 13 : 20, i ? S.C : S.Y, u, S.Y)); ctx.globalAlpha = 1; }
     if (st.mode === 'gameover') { ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, P.w, P.h); label('GAME OVER', P.w / 2, P.h * 0.38, Math.round(46 * u), S.R);
-      label('YOUR PROGRESS IS KEPT', P.w / 2, P.h * 0.52, Math.round(15 * u), S.W); if (uiT > 1) label('TAP TO CONTINUE', P.w / 2, P.h * 0.66, Math.round(22 * u), S.C); }
+      label('YOUR PROGRESS IS KEPT', P.w / 2, P.h * 0.52, Math.round(15 * u), S.W); if (uiT > GAMEOVER_GUARD) { ctx.restore(); bigButton(L.btn.cont, 'CONTINUE', S.G); ctx.save(); ctx.translate(P.x, P.y); } }
     if (paused) { ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, 0, P.w, P.h); label('PAUSED', P.w / 2, P.h * 0.36, Math.round(48 * u), S.M); label('TAP TO PLAY', P.w / 2, P.h * 0.54, Math.round(22 * u), S.C);
-      if (paused === 'user') { ctx.restore(); bigButton(L.btn.title, 'TITLE', S.Y); ctx.save(); ctx.translate(P.x, P.y); } }
+      ctx.restore(); bigButton(L.btn.title, 'TITLE', S.Y); ctx.save(); ctx.translate(P.x, P.y); }
   }
   if (ui === 'title') {
     ctx.restore();
@@ -256,9 +278,11 @@ function render() {
 let last = 0, acc = 0, saveT = 0;
 function frameLoop(ts) {
   const dt = Math.min(0.1, last ? (ts - last) / 1000 : 0); last = ts;
+  if (portrait() && ui === 'game' && !paused) pause('auto');
   if (!portrait() && document.visibilityState === 'visible') {
     uiT += dt; if (confirmNew > 0) confirmNew -= dt;
-    if (ui === 'game' && !paused && G.st) { acc += dt; let n = 0; while (acc >= DT && n++ < 24) { step(); acc -= DT; } if (n >= 24) acc = 0; saveT += dt; if (saveT > 2) { saveT = 0; save(); } }
+    if (ui === 'game' && !paused && G.st && introT > 0) { const was = introT; introT = Math.max(0, introT - dt); if (was > 0.5 && introT <= 0.5) SFX.jump(); if (introT <= 0) SFX.land(); acc = 0; }
+    else if (ui === 'game' && !paused && G.st) { acc += dt; let n = 0; while (acc >= DT && n++ < 24) { step(); acc -= DT; } if (n >= 24) acc = 0; saveT += dt; if (saveT > 2) { saveT = 0; save(); } }
     else acc = 0;
   } else acc = 0;
   tickMusic(); render(); requestAnimationFrame(frameLoop);
@@ -267,7 +291,7 @@ window.addEventListener('resize', layout); window.addEventListener('orientationc
 // boot: silent resume when the game was left mid-play; otherwise the title
 (function boot() {
   const s = readSave(); refreshHasSave();
-  if (s && !s.won && s.ui === 'game' && loadSave()) { ui = 'game'; paused = s.userPaused ? 'user' : null; }
+  if (s && !s.won && s.ui === 'game' && loadSave()) { ui = 'game'; paused = s.userPaused ? 'user' : 'auto'; }
   else { ui = 'title'; playMusic('title'); }
 })();
 const start = () => { layout(); requestAnimationFrame(frameLoop); };
@@ -277,7 +301,7 @@ Promise.race([fontReady, new Promise(r => setTimeout(r, 1500))]).then(start, sta
 // hook for automated tests (not used by the game itself)
 window.LLI_TEST = {
   G, get state() { return G.st ? JSON.parse(JSON.stringify(G.serialize())) : null; }, get live() { return G.st; }, get layout() { return L; },
-  get ui() { return ui; }, get paused() { return paused; }, get music() { return music && music.name; },
+  get ui() { return ui; }, get paused() { return paused; }, get intro() { return introT; }, get music() { return music && music.name; },
   newGame() { G.newGame(); G.events.length = 0; startPlay(); save(); }, save() { save(); }, flush: flushEvents,
   place(x, y) { Object.assign(G.st.n, { x, y, ground: true, vx: 0, vy: 0 }); G.st.arm = null; },
   give(id) { const k = G.st.pockets.indexOf(null); if (k < 0) return false; G.st.pockets[k] = id; G.st.items[id] = { held: true }; return true; },

@@ -260,10 +260,16 @@ function backDoor(c, x1, x2, col, low) {
   rect(c, x + 2, top + 2, w - 4, 5, 'rgba(0,0,0,0.45)'); rect(c, x + 2, top + 2, 4, h - 2, 'rgba(0,0,0,0.45)');
   disc(c, x + w - 9, top + h * 0.55, 3, S.Y, 1);
 }
-function frontDoor(c, x1, x2, col, low) {
+/* front doors: the dark opening is painted behind Norris (static layer); only the arch frame is drawn over him */
+function frontDoorFill(c, x1, x2, low) {
   const w = X(x2 - x1) + 8, x = X(x1) - 4, h = low ? 76 : 112, top = 362 - h;
   c.save(); c.beginPath(); c.moveTo(x, 384); c.lineTo(x, top + 14); c.quadraticCurveTo(x + w / 2, top - 8, x + w, top + 14); c.lineTo(x + w, 384); c.closePath();
-  c.fillStyle = '#000000'; c.fill(); c.lineWidth = 3; c.strokeStyle = col; c.stroke(); c.restore();
+  c.fillStyle = '#000000'; c.fill(); c.restore();
+}
+function frontDoor(c, x1, x2, col, low) {
+  const w = X(x2 - x1) + 8, x = X(x1) - 4, h = low ? 76 : 112, top = 362 - h;
+  c.save(); c.beginPath(); c.moveTo(x, 384); c.lineTo(x, top + 14); c.quadraticCurveTo(x + w / 2, top - 8, x + w, top + 14); c.lineTo(x + w, 384);
+  c.lineWidth = 3; c.strokeStyle = col; c.stroke(); c.restore();
   c.save(); c.globalAlpha = 0.5; ln(c, x + 6, top + 18, x + 6, 380, 1.4, col); ln(c, x + w - 6, top + 18, x + w - 6, 380, 1.4, col); c.restore();
 }
 const SPOTLOOK = {
@@ -280,10 +286,11 @@ function drawSpots(c, R, st) {
   const P = PAL[R.pal] || {};
   for (const s of R.spots || []) {
     if (s.hidden) continue;
+    if (s.kind === 'front' && s.look === 'lowdoor') { frontDoorFill(c, s.x1, s.x2, true); continue; }
     if (s.look && s.look !== 'lowdoor' && SPOTLOOK[s.look]) { SPOTLOOK[s.look](c, s, R, st); continue; }
     if (s.look === 'none') continue;
     if (s.kind === 'back') backDoor(c, s.x1, s.x2, P.door || S.R, s.look === 'lowdoor');
-    else if (s.kind === 'front') { /* drawn in the front layer */ }
+    else if (s.kind === 'front') frontDoorFill(c, s.x1, s.x2, false);
   }
 }
 function drawFrontDoors(c, R) {
@@ -420,7 +427,7 @@ const ENEMY = {
   dustbunny: (c, x, y, e, t) => { const hop = Math.abs(Math.sin(t * 8)) * 4; c.save(); c.globalAlpha = 0.9; for (const [dx, dy, r] of [[0, 9, 10], [-6, 6, 6], [6, 6, 6], [e.dir * 8, 14, 6]]) disc(c, x + dx, y - dy - hop, r, '#9a9a9a'); for (const d of [-1, 1]) oval(c, x + e.dir * 8 + d * 3, y - 24 - hop, 2.5, 7, '#9a9a9a'); c.restore(); eyes(c, x + e.dir * 9, y - 14 - hop, 3, 1.8, true); },
   sock: (c, x, y, e, t) => { const by = y; if (e.warn) { oval(c, x, by - 2, 12, 4, K); c.save(); c.globalAlpha = 0.6; ln(c, x - 8 + Math.sin(t * 40) * 2, by - 4, x + 8, by - 4, 1.4, S.G); c.restore(); return; } if (!e.active) return;
     c.save(); c.beginPath(); c.rect(x - 40, by - 80, 80, 80); c.clip(); V.drawSock(c, Math.floor(t * 8) % 2, x, by + (1 - e.rise) * 40, 0.4, 1); c.restore(); },
-  needle: (c, x, y, e) => { if (e.warn) return; if (!e.active) return; c.save(); c.translate(x, y - 4); c.scale(e.dir, 1); ln(c, -16, 0, 16, 0, 2.4, S.w); oval(c, -12, 0, 3, 1.4, K); shape(c, [[16, -1.2], [20, 0], [16, 1.2]], S.w); c.beginPath(); c.moveTo(-12, 0); c.quadraticCurveTo(-24, 6, -40, -2); c.lineWidth = 1.2; c.strokeStyle = S.R; c.stroke(); c.restore(); },
+  needle: (c, x, y, e, t) => { if (e.warn) { if (Math.floor((t || 0) * 10) % 2) return; const gx = e.dir > 0 ? 8 : 504; c.save(); star(c, gx, y - 4, 7, S.W); c.restore(); return; } if (!e.active) return; c.save(); c.translate(x, y - 4); c.scale(e.dir, 1); ln(c, -16, 0, 16, 0, 2.4, S.w); oval(c, -12, 0, 3, 1.4, K); shape(c, [[16, -1.2], [20, 0], [16, 1.2]], S.w); c.beginPath(); c.moveTo(-12, 0); c.quadraticCurveTo(-24, 6, -40, -2); c.lineWidth = 1.2; c.strokeStyle = S.R; c.stroke(); c.restore(); },
   bubble: (c, x, y, e, t) => { c.save(); c.globalAlpha = 0.85; disc(c, x, y - 12, 12, 'rgba(0,255,255,0.25)'); c.beginPath(); c.arc(x, y - 12, 12, 0, Math.PI * 2); c.lineWidth = 1.6; c.strokeStyle = S.C; c.stroke(); oval(c, x - 4, y - 17, 3, 4, S.W); c.restore(); eyes(c, x + 1, y - 11, 3.5, 1.8); },
   bedsheet: (c, x, y, e, t) => { const w = 22, wav = Math.sin(t * 6) * 3; c.beginPath(); c.moveTo(x - w, y); c.quadraticCurveTo(x - w - 2, y - 36, x, y - 38); c.quadraticCurveTo(x + w + 2, y - 36, x + w, y); for (let k = 0; k < 4; k++) c.lineTo(x + w - (k + 0.5) * w / 2, y - 6 + ((k % 2) ? wav : -wav)); c.closePath(); c.fillStyle = S.W; c.fill(); c.lineWidth = 1.4; c.strokeStyle = K; c.stroke(); for (const d of [-1, 1]) oval(c, x + d * 6, y - 24, 3, 5, K); if (e.warn) { oval(c, x, y - 12, 4, 4, K); } },
   mouse: (c, x, y, e, t) => { c.save(); c.translate(x, y); c.scale(e.dir, 1); oval(c, 0, -8, 14, 8, S.w, 1.4); disc(c, 12, -10, 5, S.w, 1.2); disc(c, 6, -16, 4, S.M, 1.2); disc(c, 16, -9, 1.6, K); disc(c, 18, -8, 1.4, S.M); ln(c, -14, -6, -26, -10, 1.4); const a = t * 8; c.translate(-4, -18); ln(c, 0, 0, 0, 4, 1.6, S.Y); c.rotate(a); rect(c, -6, -2, 12, 3, S.Y); c.restore(); for (const k of [-6, 6]) disc(c, x + k, y - 1, 2, K); },
@@ -456,7 +463,8 @@ function drawCuckoo(c, st, R, t) {
 }
 
 /* ---------- Norris pose ---------- */
-function norrisPose(n, idleT, t) {
+function norrisPose(n, idleT, t, reach) {
+  if (reach > 0 && n.ground) return 'reach';
   if (!n.ground) return n.air < 0.08 && n.vy < 0 ? 'jump1' : (n.vy < 0 ? 'jump2' : 'jump3');
   if (n.vx) return 'walk' + (1 + Math.floor(n.walkT * 8) % 4);
   if (idleT > 5 && (idleT - 5) % 9 < 1.8) return 'yawn';
@@ -502,7 +510,7 @@ function drawScene(c, G, opts) {
   // Norris
   if (st.float) { const sway = Math.sin(t * 3) * 6; balloonArt(c, X(n.x) + 10, X(n.y) - 66, sway); }
   const flick = st.inv > 0 && Math.floor(st.inv * 12) % 2 === 0;
-  if (!flick && st.mode !== 'win') V.drawNorris(c, st.float ? 'jump2' : norrisPose(n, opts.idleT || 0, t), X(n.x), X(n.y) + 2, 0.6, n.face);
+  if (!flick && st.mode !== 'win') V.drawNorris(c, st.float ? 'jump2' : norrisPose(n, opts.idleT || 0, t, st.reach || 0), X(n.x), X(n.y) + 2, 0.6, n.face);
   drawFrontDoors(c, R);
   if (st.trans) { const k = Math.min(1, st.trans.t / st.trans.dur); c.fillStyle = `rgba(0,0,0,${k})`; c.fillRect(0, 0, 512, 384); if (st.trans.kind === 'rocket') { const ry = 300 - k * 380; DEC.rocket(c, { x: n.x, y: ry / 2 }); for (let i = 0; i < 6; i++) disc(c, X(n.x) + Math.sin(i * 2 + t * 20) * 6, ry + 6 + i * 8, 6 - i * 0.8, i % 2 ? S.Y : S.R); } }
 }
@@ -521,13 +529,14 @@ function drawArcade(c, G) {
 
 /* ---------- title + win ---------- */
 function bedroomBackdrop(c) { interior(c, PAL.mast, {}); DEC.window(c, { x: 150, y: 26, w: 46, h: 50 }); DEC.picture(c, { x: 60, y: 40, w: 30, h: 24, col: 'G' }); }
-function drawTitle(c, t) {
+function drawTitle(c, t, noText) {
   bedroomBackdrop(c); LOOK.bigbed(c, { x1: 120, x2: 214, y: 140 }); LOOK.bedside(c, { x1: 88, x2: 108, y: 148 });
   // Norris asleep: head on pillow, blanket over
   const hx = 268, hy = 262; V.drawNorrisHead(c, hx, hy, 0.75); shape(c, [[250, 280], [420, 266], [424, 292], [250, 296]], S.C, 1.2); for (let x = 270; x < 420; x += 24) ln(c, x, 276, x + 2, 294, 1.2, S.b);
   for (let i = 0; i < 3; i++) { const k = ((t * 0.6 + i / 3) % 1); c.save(); c.globalAlpha = 1 - k; txt(c, 'Z', hx + 30 + k * 60, hy - 50 - k * 70, 12 + k * 14, S.W); c.restore(); }
   c.save(); c.translate(198, 290); V.drawObject(c, 'clock', 0, 0, 0.3); c.restore();
   rect(c, 0, 0, 512, 22, 'rgba(0,0,0,0)');
+  if (noText) return;
   c.save(); c.shadowColor = '#000'; c.shadowOffsetY = 4; txt(c, 'THE LONG', 256, 112, 34, S.Y); txt(c, 'LIE-IN', 256, 156, 52, S.M); c.restore();
 }
 function drawWin(c, t) {

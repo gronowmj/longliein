@@ -62,6 +62,7 @@ const POSES = {
   walk4: { bob: -2, crouch: 0, legs: [[0, 0], [6, 55]], arms: [[-4, 12], [4, 12]], eyes: 'droopy', mouth: 'smile', tassel: 8 },
   jump1: { bob: 0, crouch: 12, legs: [[32, 70], [42, 78]], arms: [[-40, 18], [-30, 26]], eyes: 'closed', mouth: 'grit', tassel: 16 },
   jump2: { bob: 0, crouch: -6, legs: [[22, 82], [50, 96]], arms: [[165, -10], [125, -40]], eyes: 'droopy', mouth: 'o', tassel: 34 },
+  reach: { bob: -2, crouch: 0, legs: [[-5, 3], [5, 3]], arms: [[165, -10], [5, 14]], eyes: 'wide', mouth: 'smile', tassel: 6 },
   jump3: { bob: 0, crouch: -2, legs: [[-12, 12], [16, 16]], arms: [[150, 10], [95, -55]], eyes: 'wide', mouth: 'o', tassel: -60 }
 };
 const NLW = 1.7; // Norris outline width (units)

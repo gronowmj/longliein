@@ -21,7 +21,7 @@ R.f_land = { name: 'LANDING', pal: 'land', respawn: [112, 176],
   edges: { left: [{ to: 'f_spar', y: 176 }], right: [{ to: 'f_mast', y: 176 }] },
   spots: [door('d_libr', 128, 'back', 'f_libr'), { id: 'loft', x1: 170, x2: 186, y: 176, kind: 'up', to: 'a_atti', req: { flags: ['hatch_down'] }, arrow: 'up', look: 'loftladder' }],
   things: [{ id: 'hatchhook', x1: 166, x2: 190, y1: 100, y2: 176, acts: ['hatch'], draw: 'lofthatch', msg: 'A LOFT HATCH, HIGH OUT OF REACH.', msgIf: [{ when: { flags: ['hatch_down'] }, msg: '' }] }],
-  items: {}, enemies: [{ type: 'patrol', art: 'wool', x1: 108, x2: 206, y: 176, speed: 18, pause: 1, w: 12, h: 12 }],
+  items: {}, enemies: [{ type: 'patrol', art: 'wool', x1: 108, x2: 206, y: 176, speed: 18, pause: 1, w: 12, h: 12, start: 'far' }],
   decor: [{ k: 'stairwell', x1: 64, x2: 100 }, { k: 'window', x: 214, y: 50, w: 36, h: 50 }, { k: 'picture', x: 24, y: 70, w: 26, h: 22, col: 'C' }],
   msgs: { hatch: 'HOOKED IT! THE LOFT LADDER SLIDES DOWN.' } };
 
@@ -56,7 +56,7 @@ R.g_kitc = { name: 'KITCHEN', pal: 'kitc', respawn: [20, 176],
     door('d_cons', 196, 'back', 'g_cons')],
   things: [{ id: 'traplock', x1: 118, x2: 138, y1: 160, y2: 176, acts: ['unlock_cellar'] }],
   items: { teacosy: [82, 138] }, food: [160, 92],
-  enemies: [{ type: 'patrol', art: 'toast', x1: 20, x2: 180, y: 176, speed: 24, w: 10, h: 20 }],
+  enemies: [{ type: 'patrol', art: 'toast', x1: 20, x2: 180, y: 176, speed: 24, w: 10, h: 20, start: 'far' }],
   decor: [{ k: 'window', x: 60, y: 30, w: 44, h: 46 }, { k: 'pans', x: 150, y: 40 }],
   msgs: { unlock_cellar: 'CLUNK! THE CELLAR TRAPDOOR IS UNLOCKED.' } };
 
@@ -153,10 +153,10 @@ R.f_sewi = { name: 'SEWING ROOM', pal: 'sewi', respawn: [29, 176],
 R.f_bath = { name: 'BATHROOM', pal: 'bath', respawn: [20, 176],
   plats: [F(), P(24, 100, 146, 'bath'), P(124, 150, 140, 'basin'), P(162, 204, 100, 'cabinet')],
   edges: { left: [{ to: 'f_mast', y: 176 }] },
-  spots: [door('d_sewi', 222, 'back', 'f_sewi')],
+  spots: [door('d_sewi', 218, 'back', 'f_sewi', { x2: 242 })],
   things: [{ id: 'tap', x1: 26, x2: 42, y1: 118, y2: 176, acts: ['fill_hwb'], draw: 'hottap' }],
   items: { bulb: [184, 100], duck: [62, 146] },
-  enemies: [{ type: 'fly8', art: 'bubble', cx: 160, cy: 128, rx: 52, ry: 20, period: 6, w: 12, h: 12 }],
+  enemies: [{ type: 'fly8', art: 'bubble', cx: 160, cy: 128, rx: 44, ry: 20, period: 6, w: 12, h: 12 }],
   decor: [{ k: 'mirror', x: 166, y: 40 }],
   msgs: { fill_hwb: 'GLUG GLUG... THE HOT-WATER BOTTLE IS FULL.' } };
 
@@ -181,7 +181,7 @@ R.a_toys = { name: 'TOY LOFT', pal: 'toys', respawn: [20, 176],
     { id: 'ladF', x1: 232, x2: 246, y: 176, kind: 'ladder', local: true, dest: [239, 42], req: { flags: ['ladder_down'] }, arrow: 'up', look: 'none' },
     door('d_tank', 72, 'back', 'a_tank')],
   things: [], items: { drawerkey: [214, 42] },
-  enemies: [{ type: 'patrol', art: 'mouse', x1: 96, x2: 228, y: 176, speed: 30, w: 14, h: 9 }],
+  enemies: [{ type: 'patrol', art: 'mouse', x1: 96, x2: 228, y: 176, speed: 30, w: 14, h: 9, start: 'far' }],
   decor: [{ k: 'roofbeams' }, { k: 'balloon' }, { k: 'ropeladder' }],
   msgs: { ladder_unrolls: 'THE ROPE LADDER UNROLLS TO THE FLOOR.' } };
 
@@ -190,7 +190,7 @@ R.a_chim = { name: 'CHIMNEY BREAST', pal: 'chim', respawn: [40, 176],
   edges: { right: [{ to: 'a_tank', y: 176 }] },
   spots: [{ id: 'flue', x1: 116, x2: 140, y: 170, kind: 'up', to: 'r_chtp', req: { flags: ['fire_out'] }, arrow: 'up', look: 'none', lockMsg: 'TOO HOT! THE FIRE IS BURNING.' }, door('d_atti', 28, 'front', 'a_atti', { look: 'lowdoor' })],
   things: [], items: {}, onEnter: ['douse_fire'],
-  enemies: [{ type: 'fire', x: 128, x1: 110, x2: 146, y: 170, until: 'fire_out' }, { type: 'drop', art: 'soot', x1: 60, x2: 220, period: 2.6, y0: 0, w: 12, h: 10, track: true }],
+  enemies: [{ type: 'fire', x: 128, x1: 110, x2: 146, y: 170, until: 'fire_out' }, { type: 'drop', art: 'soot', x1: 60, x2: 220, period: 2.6, y0: 0, w: 12, h: 10, track: true, delay: 1.2 }],
   decor: [{ k: 'chimneybreast', x1: 96, x2: 160 }],
   msgs: { douse_fire: 'PSSSHHH! THE FIRE IS OUT.' } };
 

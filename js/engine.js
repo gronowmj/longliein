@@ -3,7 +3,7 @@
 (function (root) {
 'use strict';
 const LW = 256, LH = 192, HW = 6, NH = 42, STEP = 10, WALK = 64, GRAV = 640, JUMP_V = 263, MAXFALL = 420, DT = 1 / 120;
-const ARM_T = 0.4, COYOTE = 0.1, STEER = 0.4, FLOAT_T = 1.2;
+const ARM_T = 0.4, ENTRY_SAFE = 1.0, COYOTE = 0.1, STEER = 0.4, FLOAT_T = 1.2;
 const SAVE_KEY = 'lli-save-v2';
 const VARIANT_FLAG = { hwb: 'hwb_full', can: 'can_full', torch: 'torch_charged', wcan: 'wcan_full' };
 const FOOD_ART = ['cocoa', 'custard', 'crumpet', 'tart', 'pudding', 'milk'];
@@ -12,7 +12,7 @@ function create(Wd, Rm) {
   Wd = Wd || root.LLI_WORLD; Rm = Rm || root.LLI_ROOMS;
   const ITEMS = {}; Wd.items.forEach(i => ITEMS[i.id] = i);
   const ACTS = {}; Wd.actions.forEach(a => ACTS[a.id] = a);
-  const G = { st: null, events: [], nav: false, invincible: false, W: Wd, R: Rm, ITEMS, ACTS, consts: { LW, LH, HW, NH, STEP, WALK, GRAV, JUMP_V, DT, ARM_T } };
+  const G = { st: null, events: [], nav: false, invincible: false, W: Wd, R: Rm, ITEMS, ACTS, consts: { LW, LH, HW, NH, STEP, WALK, GRAV, JUMP_V, DT, ARM_T, ENTRY_SAFE } };
   const ev = e => { if (!G.quiet) G.events.push(e); };
   const say = (text, dur = 2.2, kind = 'msg') => { const st = G.st; st.toast = { text, t: dur, kind }; ev({ toast: text }); };
   const sfx = name => ev({ sfx: name });
@@ -102,7 +102,7 @@ function create(Wd, Rm) {
 
   /* ---------- rooms ---------- */
   function resetEnemies() {
-    const R = G.room(); G.st.en = (R.enemies || []).map((e, k) => ({ k, x: e.x != null ? e.x : (e.x1 != null ? e.x1 : 128), y: e.y || 100, dir: 1, t: 0, ph: 0, a: 0 }));
+    const R = G.room(); G.st.en = (R.enemies || []).map((e, k) => ({ k, x: e.x != null ? e.x : (e.start === 'far' ? e.x2 : (e.x1 != null ? e.x1 : 128)), y: e.y || 100, dir: e.start === 'far' ? -1 : 1, pause: e.start === 'far' ? (e.pause || 0) : 0, t: -(e.delay || 0), ph: 0, a: 0 }));
   }
   function arrivalFor(dest, src, via) {
     const D = Rm[dest];
@@ -117,12 +117,13 @@ function create(Wd, Rm) {
     return D.respawn;
   }
   function enterRoom(id, counted = true, pos, face) {
-    const st = G.st; const prev = st.room; st.room = id; st.rt = 0; st.chairPrev = null; st.arm = null; st.visitPopped = false; st.touching = {}; st.block = {};
+    const st = G.st; const prev = st.room; st.room = id; st.rt = 0; st.chairPrev = null; st.arm = null; st.visitPopped = false; st.touching = {}; st.block = {}; st.dropped = {};
     st.cuckoo.pop = null;
     const R = Rm[id];
     const p = pos || R.start || R.respawn;
     st.n = mkN(p[0], p[1], face || st.n.face); st.n.ground = true;
     resetEnemies();
+    st.esafe = ENTRY_SAFE; noArmHere();
     if (counted) {
       st.steps++; st.energy = Math.max(0, st.energy - Wd.rules.drain_per_screen);
       ev({ room: id, from: prev });
@@ -131,6 +132,9 @@ function create(Wd, Rm) {
     for (const aid of (R.onEnter || [])) { const a = ACTS[aid]; if (a && actOK(a)) doAction(a); }
     if (st.energy <= 0.0001) loseLife();
   }
+  G.arrivalFor = arrivalFor;
+  function noArmHere() { const s = spotAt(); G.st.noArm = s ? s.id : null; }
+  G.noArmHere = noArmHere;
   G.enterRoom = enterRoom;
   function go(dest, via) {
     const src = G.st.room, pos = arrivalFor(dest, src, via);
@@ -146,7 +150,7 @@ function create(Wd, Rm) {
   /* ---------- life ---------- */
   function hit(cost = Wd.rules.hit_cost) {
     const st = G.st;
-    if (st.inv > 0 || st.float || G.nav || G.invincible || st.mode !== 'play') return false;
+    if (st.inv > 0 || st.esafe > 0 || st.float || G.nav || G.invincible || st.mode !== 'play') return false;
     st.energy = Math.max(0, st.energy - cost); st.inv = Wd.rules.safe_time; st.arm = null; sfx('hit'); say('OUCH!', 0.9, 'hit');
     if (st.energy <= 0.0001) loseLife();
     return true;
@@ -171,7 +175,7 @@ function create(Wd, Rm) {
   function tryPickups() {
     const st = G.st, n = st.n;
     for (const id in st.items) {
-      const it = st.items[id]; if (it.room !== st.room || it.held) continue;
+      const it = st.items[id]; if (it.room !== st.room || it.held || (st.dropped && st.dropped[id])) continue;
       const touch = Math.abs(it.x - n.x) < HW + 6 && it.y >= n.y - NH - 4 && it.y <= n.y + 3;
       if (!touch) { if (st.block[id]) delete st.block[id]; continue; }
       if (st.block[id]) continue;
@@ -179,7 +183,7 @@ function create(Wd, Rm) {
       if (I.pickup_requires && !condOK(I.pickup_requires)) { st.block[id] = 1; say((Rm[st.room].refuse || {})[id] || "CAN'T REACH IT", 2.4); sfx('nope'); continue; }
       const slot = st.pockets.indexOf(null);
       if (slot < 0) { st.block[id] = 1; say('POCKETS FULL', 1.6); sfx('nope'); continue; }
-      giveTo(id, slot); (I.pickup_sets || []).forEach(f => st.flags[f] = true);
+      if (it.y < n.y - 14) st.reach = 0.35; giveTo(id, slot); (I.pickup_sets || []).forEach(f => st.flags[f] = true);
       say(I.name.toUpperCase() + '|' + G.itemHint(id), 3.4, 'item'); sfx('pickup'); ev({ save: true });
     }
     // food
@@ -198,7 +202,7 @@ function create(Wd, Rm) {
     const R = G.room(); if (R.noDrop) { say("CAN'T DROP THAT HERE", 1.2); return false; }
     const p = platAt(st.n.x, st.n.y); let y = st.n.y;
     if (p && p.mover) { const below = platforms().filter(q => !q.mover && st.n.x >= q.x1 && st.n.x <= q.x2 && q.y > p.y).sort((a, b) => a.y - b.y)[0]; y = below ? below.y : 176; }
-    st.pockets[slot] = null; st.items[id] = { room: st.room, x: st.n.x, y }; st.block[id] = 1; sfx('drop'); ev({ save: true });
+    st.pockets[slot] = null; st.items[id] = { room: st.room, x: st.n.x, y }; st.block[id] = 1; (st.dropped || (st.dropped = {}))[id] = 1; sfx('drop'); ev({ save: true });
     return true;
   };
 
@@ -249,7 +253,7 @@ function create(Wd, Rm) {
   function useSpot(s) {
     const st = G.st; st.arm = null; sfx('use');
     if (s.ride) { st.rides--; ev({ rides: st.rides }); }
-    if (s.kind === 'ladder') { st.n = mkN(s.dest[0], s.dest[1], st.n.face); st.inv = Math.max(st.inv, 0.3); ev({ save: true }); return; }
+    if (s.kind === 'ladder') { st.n = mkN(s.dest[0], s.dest[1], st.n.face); st.inv = Math.max(st.inv, 0.3); noArmHere(); ev({ save: true }); return; }
     if (s.act === 'balloon') { ev({ save: true, now: true }); const a = ACTS.balloon; (a.consume || []).forEach(id => { const k = st.pockets.indexOf(id); if (k >= 0) st.pockets[k] = null; st.items[id] = { room: null, gone: true }; });
       st.float = { t: 0, from: [st.n.x, st.n.y], to: G.room().floatTo }; sfx('snip'); say('SNIP!', 1); return; }
     if (s.act === 'enter_arcade') { st.mode = 'arcade'; st.arcade = newArcade(); ev({ arcade: true }); return; }
@@ -264,6 +268,7 @@ function create(Wd, Rm) {
   G.enemyBox = function (E, e) { const w = E.w || 14, h = E.h || 14; return { x1: e.x - w / 2, x2: e.x + w / 2, y1: e.y - h, y2: e.y }; };
   function updEnemy(E, e, dt) {
     const st = G.st, n = st.n; e.t += dt;
+    if (e.t < 0) { e.warn = false; e.active = false; e.x = -999; return; }
     switch (E.type) {
       case 'patrol': case 'moth': {
         if (e.pause > 0) { e.pause -= dt; break; }
@@ -349,6 +354,8 @@ function create(Wd, Rm) {
     if (st.mode !== 'play') return;
     st.t += dt; st.rt += dt; st.tick++;
     if (st.inv > 0) st.inv = Math.max(0, st.inv - dt);
+    if (st.esafe > 0) st.esafe = Math.max(0, st.esafe - dt);
+    if (st.reach > 0) st.reach = Math.max(0, st.reach - dt);
     // transitions (doors, rides, rocket)
     if (st.trans) { st.trans.t += dt; if (st.trans.t >= st.trans.dur) { const tr = st.trans; st.trans = null; go(tr.to, tr.via); } return; }
     if (st.float) { stepFloat(dt); return; }
@@ -402,7 +409,9 @@ function create(Wd, Rm) {
     // arming
     const sp2 = spotAt();
     const still = n.ground && !dir && Math.abs(n.x - ox) < 0.001;
-    if (sp2 && still) {
+    if (st.noArm && (!sp2 || sp2.id !== st.noArm)) st.noArm = null;
+    if (sp2 && still && st.noArm === sp2.id) { st.arm = null; }
+    else if (sp2 && still) {
       if (!st.arm || st.arm.id !== sp2.id) st.arm = { id: sp2.id, t: 0, armed: false };
       if (spotReady(sp2)) { st.arm.t += dt; if (!st.arm.armed && st.arm.t >= ARM_T) { st.arm.armed = true; sfx('arm'); } }
       else { st.arm.t = 0; st.arm.armed = false; if (!st.arm.told) { st.arm.told = 1; st.arm.lt = 0; } st.arm.lt = (st.arm.lt || 0) + dt; if (st.arm.lt > ARM_T && st.arm.told === 1) { st.arm.told = 2; const m = spotRefusal(sp2); if (m) say(m, 1.4); } }
@@ -444,7 +453,7 @@ function create(Wd, Rm) {
     if (A.count >= AR.need) { A.result = 'win'; A.over = 3.5; if (!G.st.arcadeDone) { G.st.arcadeDone = true; G.st.flags.arcade_done = true; G.st.lives += 1; A.bonus = true; sfx('win'); } }
     else if (A.miss >= AR.lives) { A.result = 'lose'; A.over = 2.5; sfx('die'); }
   }
-  function endArcade() { const st = G.st; st.mode = 'play'; st.arcade = null; const R = G.room(); const sp = R.spots.find(s => s.act === 'enter_arcade'); st.n = mkN((sp.x1 + sp.x2) / 2, sp.y, 1); st.arm = null; ev({ arcadeEnd: true, save: true }); }
+  function endArcade() { const st = G.st; st.mode = 'play'; st.arcade = null; const R = G.room(); const sp = R.spots.find(s => s.act === 'enter_arcade'); st.n = mkN((sp.x1 + sp.x2) / 2, sp.y, 1); st.arm = null; st.esafe = ENTRY_SAFE; noArmHere(); ev({ arcadeEnd: true, save: true }); }
   G.endArcade = endArcade;
   G.hint = function () { return null; };
   G.SAVE_KEY = SAVE_KEY;
