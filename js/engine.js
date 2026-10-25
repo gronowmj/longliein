@@ -26,7 +26,7 @@ function create(Wd, Rm) {
     }
     const s = Wd.start, R0 = Rm[s.room];
     return { v: 2, mode: 'play', room: s.room, n: mkN(R0.start[0], R0.start[1], 1), energy: 1, lives: Wd.rules.lives_start,
-      pockets: [null, null], items, flags: {}, rides: 0, found: {}, foodIdx: 0, steps: 0, arcadeDone: false,
+      pockets: [null, null], pord: [0, 0], pickN: 0, got: {}, items, flags: {}, rides: 0, found: {}, foodIdx: 0, steps: 0, arcadeDone: false,
       t: 0, inv: 0, arm: null, float: null, trans: null, toast: null, rt: 0, en: [], visitPopped: false,
       cuckoo: { i: 0, t: 0, pop: null }, tick: 0, touching: {}, deathAt: null, won: false, arcade: null, block: {} };
   }
@@ -39,6 +39,8 @@ function create(Wd, Rm) {
     resetEnemies();
     // full4 minor 2: enemies restart at their start positions on load, so give the same visible entry safety as arriving in a room
     if (G.st.mode === 'play') G.st.esafe = Math.max(G.st.esafe || 0, ENTRY_SAFE);
+    if (!G.st.pord) G.st.pord = G.st.pockets.map(() => 0);   // full5: older saves have no pocket order (a tie counts slot 1 as the oldest)
+    blockUnder();
     return true;
   };
   G.serialize = function () { const s = Object.assign({}, G.st); delete s.en; delete s.touching; delete s.trans; delete s.block; return JSON.parse(JSON.stringify(s)); };
@@ -141,7 +143,7 @@ function create(Wd, Rm) {
     if (st.energy <= 0.0001) loseLife();
   }
   G.arrivalFor = arrivalFor;
-  function noArmHere() { const s = spotAt(); G.st.noArm = s ? s.id : null; }
+  function noArmHere() { const s = spotAt(); G.st.noArm = s ? s.id : null; blockUnder(); }
   G.noArmHere = noArmHere;
   G.enterRoom = enterRoom;
   function go(dest, via) {
@@ -179,20 +181,37 @@ function create(Wd, Rm) {
 
   /* ---------- items ---------- */
   function score(id) { const st = G.st; if (Wd.counted.includes(id) && !st.found[id]) { st.found[id] = 1; ev({ found: id }); } }
-  function giveTo(id, slot) { const st = G.st; st.pockets[slot] = id; st.items[id] = { held: true }; score(id); }
+  // full5: pockets remember the order things went in (st.pord[slot] = pickup number), so a swap drops the OLDEST
+  function giveTo(id, slot) { const st = G.st; st.pockets[slot] = id; st.items[id] = { held: true }; st.pickN = (st.pickN || 0) + 1; (st.got || (st.got = {}))[id] = 1; (st.pord || (st.pord = st.pockets.map(() => 0)))[slot] = st.pickN; score(id); }
+  const touchesItem = (it, n) => Math.abs(it.x - n.x) < HW + 6 && it.y >= n.y - NH - 4 && it.y <= n.y + 3;
+  // full5: anything Norris is standing on when he arrives (door, ladder, edge, respawn, load, landing) waits until he steps off
+  function blockUnder() { const st = G.st; if (!st || !st.n) return; for (const id in st.items) { const it = st.items[id]; if (it.room === st.room && !it.held && touchesItem(it, st.n)) st.block[id] = 1; } }
+  G.blockUnder = blockUnder;
+  // full5 FIFO swap: the pocket to empty is the oldest one that the new pickup does not itself need (umbrella rule)
+  function swapSlot(keep) { const st = G.st, ord = st.pord || []; let best = -1;
+    st.pockets.forEach((p, k) => { if (p && !keep.includes(p) && (best < 0 || (ord[k] || 0) < (ord[best] || 0))) best = k; }); return best; }
+  G.swapSlot = swapSlot;
   function tryPickups() {
     const st = G.st, n = st.n;
     for (const id in st.items) {
       const it = st.items[id]; if (it.room !== st.room || it.held || (st.dropped && st.dropped[id])) continue;
-      const touch = Math.abs(it.x - n.x) < HW + 6 && it.y >= n.y - NH - 4 && it.y <= n.y + 3;
-      if (!touch) { if (st.block[id]) delete st.block[id]; continue; }
+      if (!touchesItem(it, n)) { if (st.block[id]) delete st.block[id]; continue; }
       if (st.block[id]) continue;
       const I = ITEMS[id];
-      if (I.pickup_requires && !condOK(I.pickup_requires)) { st.block[id] = 1; say((Rm[st.room].refuse || {})[id] || "CAN'T REACH IT", 2.4); sfx('nope'); continue; }
-      const slot = st.pockets.indexOf(null);
-      if (slot < 0) { st.block[id] = 1; say('POCKETS FULL', 1.6); sfx('nope'); continue; }
+      // full5: a guard (snapdragons, falling books, the vault lock) only protects an item until it has first been picked up
+      const guard = I.pickup_requires && !(st.got && st.got[id]) && !st.found[id] ? I.pickup_requires : null;
+      if (guard && !condOK(guard)) { st.block[id] = 1; say((Rm[st.room].refuse || {})[id] || "CAN'T REACH IT", 2.4); sfx('nope'); continue; }
+      let slot = st.pockets.indexOf(null), out = null;
+      if (slot < 0) {
+        // full5 FIFO swap (original rule): the oldest pocket item is left exactly where the new one was lying
+        slot = Rm[st.room].noDrop ? -1 : swapSlot((guard && guard.carry) || []);
+        if (slot < 0) { st.block[id] = 1; say('POCKETS FULL', 1.6); sfx('nope'); continue; }
+        out = st.pockets[slot]; st.pockets[slot] = null;
+        st.items[out] = { room: st.room, x: it.x, y: it.y }; st.block[out] = 1; (st.dropped || (st.dropped = {}))[out] = 1;
+      }
       if (it.y < n.y - 14) st.reach = 0.35; giveTo(id, slot); (I.pickup_sets || []).forEach(f => st.flags[f] = true);
-      say(I.name.toUpperCase() + '|' + G.itemHint(id), 3.4, 'item'); sfx('pickup'); ev({ save: true });
+      say(I.name.toUpperCase() + '|' + G.itemHint(id) + (out ? '|LEFT THE ' + ITEMS[out].name.toUpperCase() + ' HERE' : ''), 3.4, 'item'); sfx('pickup');
+      ev(out ? { save: true, swap: { got: id, left: out } } : { save: true });
     }
     // food
     const F = Wd.food[st.foodIdx % Wd.food.length];
@@ -434,7 +453,7 @@ function create(Wd, Rm) {
     const st = G.st, f = st.float; f.t += dt; const k = Math.min(1, f.t / FLOAT_T), e = k * k * (3 - 2 * k);
     st.n.x = f.from[0] + (f.to[0] - f.from[0]) * e; st.n.y = f.from[1] + (f.to[1] - f.from[1]) * e - Math.sin(k * Math.PI) * 12; st.n.ground = false;
     for (const en of st.en) updEnemy(G.room().enemies[en.k], en, dt);
-    if (f.t >= FLOAT_T) { st.n = mkN(f.to[0], f.to[1], st.n.face); st.float = null; const a = ACTS.ladder_unrolls; if (a && actOK(a)) doAction(a); ev({ save: true, floatDone: true }); }
+    if (f.t >= FLOAT_T) { st.n = mkN(f.to[0], f.to[1], st.n.face); st.float = null; blockUnder(); const a = ACTS.ladder_unrolls; if (a && actOK(a)) doAction(a); ev({ save: true, floatDone: true }); }
   }
 
   /* ---------- arcade (counting sheep) ---------- */
